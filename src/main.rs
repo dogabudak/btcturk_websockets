@@ -1,12 +1,13 @@
 use std::borrow::Borrow;
 use dotenv::dotenv;
 
-use futures_util::{future, pin_mut, Sink, SinkExt, StreamExt};
+use futures_util::{future, pin_mut, Sink, SinkExt, StreamExt, TryFutureExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::{tungstenite, connect_async, tungstenite::protocol::Message};
 use sha2::{Sha256};
 use hmac::{Hmac, Mac};
 use chrono::prelude::*;
+use futures::Stream;
 
 #[tokio::main]
 async fn main() {
@@ -28,15 +29,13 @@ async fn main() {
     let mut mac = Hmac::<Sha256>::new_from_slice(&base64::decode(btc_private_key).unwrap()).unwrap();
     mac.update((btc_public_key.clone() + &timestamp).as_bytes());
     let signature: String = base64::encode(mac.finalize().into_bytes());
-    let message = Message::from(format!("[114,{{\"type\":114, \"publicKey\":\"{}\", \"timestamp\":{}, \"nonce\":{}, \"signature\": \"{}\"}}]", btc_public_key, timestamp, nonce, signature));
+    let mut message = Message::from(format!("[114,{{\"type\":114, \"publicKey\":\"{}\", \"timestamp\":{}, \"nonce\":{}, \"signature\": \"{}\"}}]", btc_public_key, timestamp, nonce, signature));
 
 
     let (mut ws_stream, _) = connect_async(url).await.expect("Failed to connect");
     println!("WebSocket handshake has been successfully completed");
-    let ( write, read) = ws_stream.split();
-    let stdin_to_ws = stdin_rx.map(Ok).forward(write);
-
-
+    let ( mut write, read) = ws_stream.split();
+    let a = write.send_all(&mut message);
     let ws_to_stdout = {
         read.for_each(|message| async {
             let data = message.unwrap().into_data();
