@@ -5,6 +5,7 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use sha2::{Sha256};
 use hmac::{Hmac, Mac};
 use chrono::prelude::*;
+use std::{thread, time};
 
 #[tokio::main]
 async fn main() {
@@ -28,7 +29,7 @@ async fn main() {
     let (ws_stream, response) = connect_async(url).await.expect("Failed to connect");
     let ( mut write, read) = ws_stream.split();
     write.send(message).await.unwrap();
-    let subscription_message = Message::from("[151,{\"type\":151, \"channel\":\"ticker\", \"event\":all, \"join\":true}]");
+    let subscription_message = Message::from("[151,{\"type\":151, \"channel\":\"ticker\", \"event\":\"all\", \"join\":true}]");
 
     write.send(subscription_message).await.unwrap();
 
@@ -37,5 +38,4 @@ async fn main() {
         let message = message.unwrap();
         println!("Received a message from the server: {:?}", message);
     }).await;
-
 }
