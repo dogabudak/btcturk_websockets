@@ -2,6 +2,9 @@
 name = "btcturk_websockets"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+keywords = ["websockets", "btcturk"]
+description= "A Rust library for interacting with the BTCTurk Websockets API."
 
 [dependencies]
 base64 = "0.21.2"
