@@ -6,20 +6,19 @@ use sha2::{Sha256};
 use tokio::net::TcpStream;
 
 #[derive(Debug, Clone)]
-pub struct Client{
+pub struct Client {
     address: String,
     keys: ApiKeys,
 }
+
 #[derive(Debug, Clone)]
 pub struct ApiKeys {
     public_key: String,
     private_key: String,
 }
+
 impl ApiKeys {
     /// Creates new API keys object by the given public/private keys.
-    /// # Errors
-    /// [`PrivateKey`][error::PrivateKey] error occurs if the private key length
-    /// is invalid.
     pub fn new(
         public_key: impl Into<String>,
         private_key: impl Into<String>,
@@ -30,8 +29,8 @@ impl ApiKeys {
         })
     }
 }
-impl<'i> Client {
 
+impl<'i> Client {
     pub fn new(
         address: String,
         keys: ApiKeys,
@@ -61,16 +60,17 @@ impl<'i> Client {
     pub async fn create_connection(&self) -> WebSocketStream<MaybeTlsStream<TcpStream>> {
         let url = url::Url::parse(&self.address).unwrap();
         let (ws_stream, _response) = connect_async(url).await.expect("Failed to connect");
-        return ws_stream
+        return ws_stream;
     }
     pub async fn get_ticker(&mut self) -> () {
         let ws_stream = Self::create_connection(&self);
-        let ( mut write, read) = ws_stream.await.split();
+        let (mut write, read) = ws_stream.await.split();
         let subscription_message = Message::from("[151,{\"type\":151, \"channel\":\"ticker\", \"event\":\"all\", \"join\":true}]");
         write.send(subscription_message).await.unwrap();
-        read.for_each(|message| async {
+        let read_from_socket = read.for_each(|message| async {
             let message = message.unwrap();
             println!("Received a message from the server: {:?}", message);
-        }).await;
+        });
+        tokio::spawn(read_from_socket).await;
     }
 }
