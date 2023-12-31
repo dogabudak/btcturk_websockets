@@ -22,11 +22,11 @@ impl ApiKeys {
     pub fn new(
         public_key: impl Into<String>,
         private_key: impl Into<String>,
-    ) -> Result<Self, ()> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             public_key: public_key.into().clone(),
             private_key: private_key.into().clone(),
-        })
+        }
     }
 }
 
@@ -34,11 +34,11 @@ impl<'i> Client {
     pub fn new(
         address: String,
         keys: ApiKeys,
-    ) -> Result<Self, Client> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             address,
             keys,
-        })
+        }
     }
 
     /// Set the client's API keys.
@@ -71,6 +71,19 @@ impl<'i> Client {
             let message = message.unwrap();
             println!("Received a message from the server: {:?}", message);
         });
-        tokio::spawn(read_from_socket).await;
+        tokio::spawn(read_from_socket).await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[test]
+    fn create_api_keys() {
+
+        let created_keys = ApiKeys::new("asd", "fgh");
+        assert_eq!(created_keys.private_key, "fgh");
+        assert_eq!(created_keys.public_key, "asd");
     }
 }
