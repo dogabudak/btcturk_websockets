@@ -78,6 +78,10 @@ impl<'i> Client {
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use chrono::Utc;
+    use sha2::Sha256;
+    use hmac::{Hmac, Mac};
+    use base64;
 
     #[test]
     fn create_api_keys() {
@@ -86,4 +90,19 @@ mod tests {
         assert_eq!(created_keys.private_key, "fgh");
         assert_eq!(created_keys.public_key, "asd");
     }
+        #[test]
+        fn test_generate_token_message() {
+            let api_keys=ApiKeys::new(String::from("dG9rZW4="), String::from("dG9rZW4="));
+            let client = Client::new(String::from("address"), api_keys);
+
+            let token = client.clone().generate_token_message();
+            let nonce = 3000;
+            let timestamp = Utc::now().timestamp_millis().to_string();
+            let mut mac = Hmac::<Sha256>::new_from_slice(&base64::decode(client.keys.private_key.clone()).unwrap()).unwrap();
+            mac.update((client.keys.public_key.clone() + &timestamp).as_bytes());
+            let expected_signature: String = base64::encode(mac.finalize().into_bytes());
+            let expected_message = Message::from(format!("[114,{{\"type\":114, \"publicKey\":\"{}\", \"timestamp\":{}, \"nonce\":{}, \"signature\": \"{}\"}}]", client.keys.public_key.clone(), timestamp, nonce, expected_signature));
+
+            assert_eq!(token, expected_message);
+        }
 }
