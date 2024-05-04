@@ -1,5 +1,6 @@
 use btcturk_websockets::{Client, ApiKeys};
 
+#[tokio::test]
 async fn general_test() {
     let btc_public_key = std::env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY must be set.");
     let btc_private_key = std::env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY must be set.");
