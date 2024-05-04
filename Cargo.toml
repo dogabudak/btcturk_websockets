@@ -1,6 +1,6 @@
 [package]
 name = "btcturk_websockets"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 keywords = ["websockets", "btcturk"]
@@ -20,5 +20,3 @@ tokio = { version = "1.29.1", features = ["full"] }
 tokio-tungstenite = { version = "0.17", features = ["native-tls"] }
 url = "2.4.0"
 
-[dev-dependencies]
-mockall = "0.12.1"
