@@ -5,7 +5,6 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use sha2::{Sha256};
 use hmac::{Hmac, Mac};
 use chrono::prelude::*;
-use std::borrow::Borrow;
 
 // Working main function as an example for the library
 #[tokio::main]

@@ -13,31 +13,26 @@ Add the following dependency to your `Cargo.toml` file:
 btcturk_websockets = "0.0.1"
 ```
 
-## Example
+## Example Usage
+
+Here's an example of how to use the `btcturk_websockets` library:
 
 ```rust
 use btcturk_websockets::{Client, ApiKeys};
+use dotenv::dotenv;
 
-#[tokio::main]
-async fn main() {
-// Retrieve API keys and WebSocket address from environment variables
-let btc_public_key = std::env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY must be set.");
-let btc_private_key = std::env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY must be set.");
-let connect_addr = std::env::var("BTCTURK_WEBSOCKET_ADDRESS").expect("BTCTURK_WEBSOCKET_ADDRESS must be set.");
-
-    // Initialize API keys
-    let api_keys = ApiKeys::new(btc_public_key, btc_private_key);
-    
-    // Initialize WebSocket client
+#[tokio::test]
+async fn general_test() {
+    dotenv().ok(); // Load environment variables from .env file
+    let btc_public_key = std::env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY must be set.");
+    let btc_private_key = std::env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY must be set.");
+    let connect_addr = std::env::var("BTCTURK_WEBSOCKET_ADDRESS").expect("BTCTURK_PRIVATE_KEY must be set.");
+    let api_keys=ApiKeys::new(btc_public_key, btc_private_key);
     let client = Client::new(connect_addr, api_keys);
-    
-    // Generate token message for authentication
     let token = client.clone().generate_token_message();
-    
-    // Create WebSocket connection
     let connection = client.clone().create_connection().await;
-    
-    // Retrieve ticker information
-    let ticker = client.clone().get_ticker().await;
+    let ticker = client.clone().get_ticker("BTCTRY").await;
 }
 ```
+
+Make sure to set up your `.env` file with the necessary environment variables before running the example.

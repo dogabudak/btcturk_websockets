@@ -62,10 +62,10 @@ impl<'i> Client {
         let (ws_stream, _response) = connect_async(url).await.expect("Failed to connect");
         return ws_stream;
     }
-    pub async fn get_ticker(&mut self) -> () {
+    pub async fn get_ticker(&mut self, event_type: &str) -> () {
         let ws_stream = Self::create_connection(&self);
         let (mut write, read) = ws_stream.await.split();
-        let subscription_message = Message::from("[151,{\"type\":151, \"channel\":\"ticker\", \"event\":\"all\", \"join\":true}]");
+        let subscription_message = Message::from(format!("[151,{{\"type\":151, \"channel\":\"ticker\", \"event\":\"{}\", \"join\":true}}]", event_type));
         write.send(subscription_message).await.unwrap();
         let read_from_socket = read.for_each(|message| async {
             let message = message.unwrap();

@@ -1,7 +1,9 @@
 use btcturk_websockets::{Client, ApiKeys};
+use dotenv::dotenv;
 
 #[tokio::test]
 async fn general_test() {
+    dotenv().ok(); // Load environment variables from .env file
     let btc_public_key = std::env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY must be set.");
     let btc_private_key = std::env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY must be set.");
     let connect_addr = std::env::var("BTCTURK_WEBSOCKET_ADDRESS").expect("BTCTURK_PRIVATE_KEY must be set.");
@@ -9,5 +11,5 @@ async fn general_test() {
     let client = Client::new(connect_addr, api_keys);
     let token = client.clone().generate_token_message();
     let connection = client.clone().create_connection().await;
-    let ticker = client.clone().get_ticker().await;
+    let ticker = client.clone().get_ticker("BTCTRY").await;
 }
