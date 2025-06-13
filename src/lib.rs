@@ -69,7 +69,6 @@ impl<'i> Client {
         write.send(subscription_message).await.unwrap();
         let read_from_socket = read.for_each(|message| async {
             let message = message.unwrap();
-            println!("Received a message from the server: {:?}", message);
         });
         tokio::spawn(read_from_socket).await.unwrap();
     }

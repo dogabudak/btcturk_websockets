@@ -37,7 +37,6 @@ async fn main() {
 
     let read_from_socket = read.for_each(|message| async {
         let message = message.unwrap();
-        println!("Received a message from the server: {:?}", message);
     });
     tokio::spawn(read_from_socket).await;
 }
