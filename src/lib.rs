@@ -62,15 +62,26 @@ impl<'i> Client {
         let (ws_stream, _response) = connect_async(url).await.expect("Failed to connect");
         return ws_stream;
     }
-    pub async fn get_ticker(&mut self, event_type: &str) -> () {
+    pub async fn get_ticker_with_handler<F>(
+        &mut self,
+        event_type: &str,
+        mut handler: F,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        F: FnMut(Message) + Send + 'static,
+    {
         let ws_stream = Self::create_connection(&self);
-        let (mut write, read) = ws_stream.await.split();
-        let subscription_message = Message::from(format!("[151,{{\"type\":151, \"channel\":\"ticker\", \"event\":\"{}\", \"join\":true}}]", event_type));
+        let (mut write, mut read) = ws_stream.await.split();
+        let subscription_message = Message::from(format!(
+            "[151,{{\"type\":151, \"channel\":\"ticker\", \"event\":\"{}\", \"join\":true}}]",
+            event_type
+        ));
         write.send(subscription_message).await.unwrap();
-        let read_from_socket = read.for_each(|message| async {
-            let message = message.unwrap();
-        });
-        tokio::spawn(read_from_socket).await.unwrap();
+
+        while let Some(msg) = read.next().await {
+            handler(msg?);
+        }
+        Ok(())
     }
 }
 

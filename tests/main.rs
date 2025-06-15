@@ -11,7 +11,8 @@ async fn general_test() {
     let client = Client::new(connect_addr, api_keys);
     let token = client.clone().generate_token_message();
     let connection = client.clone().create_connection().await;
-    let ticker = client.clone().get_ticker("BTCTRY").await;
-    println!("Received a message from the server: {:?}", ticker);
+    let ticker = client.clone().get_ticker_with_handler("BTCTRY", |msg| {
+        println!("Received: {:?}", msg);
+    }).await.unwrap();
 
 }
