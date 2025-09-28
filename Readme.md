@@ -1,38 +1,112 @@
-# Rust WebSocket Crate
+# 📦 btcturk_websockets
 
-![Rust Version](https://img.shields.io/badge/rust-1.65+-green.svg)
-![WebSocket Version](https://img.shields.io/badge/websocket-0.3.0-blue.svg)
+![Rust Version](https://img.shields.io/badge/rust-1.70%2B-green.svg)  
+[![Crates.io](https://img.shields.io/crates/v/btcturk_websockets.svg)](https://crates.io/crates/btcturk_websockets)  
+[![Docs.rs](https://docs.rs/btcturk_websockets/badge.svg)](https://docs.rs/btcturk_websockets)  
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-## Installation
+A Rust client for the **BtcTurk WebSocket API**.  
+Subscribe to live **ticker** data today; designed to extend to **depth (order book)** and **OHLC** channels.
 
-Add the following dependency to your `Cargo.toml` file:
+---
+
+## 🚀 Installation
+
+Add this to your `Cargo.toml` (use your published minor series):
 
 ```toml
 [dependencies]
-btcturk_websockets = "0.3.1"
+btcturk_websockets = "0.4.1"
 ```
 
-## Example Usage
+> Check the latest version on crates.io if newer is available.
 
-Here's an example of how to use the `btcturk_websockets` library:
+---
+
+## 🔧 Quickstart (works with current API)
+
+The current public API exposes `Client::get_ticker_with_handler` which yields raw WebSocket messages.  
+For public data, dummy keys are fine (BtcTurk doesn’t require auth for ticker).
 
 ```rust
 use btcturk_websockets::{Client, ApiKeys};
-use dotenv::dotenv;
+use tokio_tungstenite::tungstenite::protocol::Message;
 
-#[tokio::test]
-async fn general_test() {
-    dotenv().ok(); // Load environment variables from .env file
-    let btc_public_key = std::env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY must be set.");
-    let btc_private_key = std::env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY must be set.");
-    let connect_addr = std::env::var("BTCTURK_WEBSOCKET_ADDRESS").expect("BTCTURK_PRIVATE_KEY must be set.");
-    let api_keys=ApiKeys::new(btc_public_key, btc_private_key);
-    let client = Client::new(connect_addr, api_keys);
-    let token = client.clone().generate_token_message();
-    let connection = client.clone().create_connection().await;
-    let ticker = client.clone().get_ticker("BTCTRY").await;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Public feeds don't need real keys; the Client struct requires them, so any strings work here.
+    let api_keys = ApiKeys::new("dummy_public", "dummy_private");
+
+    // Connect to BtcTurk feed
+    let mut client = Client::new(
+        "wss://ws-feed-pro.btcturk.com/".to_string(),
+        api_keys,
+    );
+
+    // Subscribe to BTC/USDT ticker and print raw messages
+    client
+        .get_ticker_with_handler("BTCUSDT", |msg: Message| {
+            println!("Ticker: {:?}", msg);
+        })
+        .await?;
+
+    Ok(())
 }
 ```
 
-Make sure to set up your `.env` file with the necessary environment variables before running the example.
+### Run as an example
+
+Create `examples/ticker.rs` with the code above, then:
+
+```bash
+cargo run --example ticker
+```
+
+---
+
+## 🧱 Roadmap (optional API you may add)
+
+If/when you add a unified subscribe function and a `Channel` enum, usage could look like this:
+
+```rust
+// hypothetically provided by a newer crate version
+use btcturk_websockets::{Client, ApiKeys, Channel};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let api_keys = ApiKeys::new("dummy_public", "dummy_private");
+    let mut client = Client::new("wss://ws-feed-pro.btcturk.com/".into(), api_keys);
+
+    // Fallback to ticker if None
+    client.subscribe_with_handler("BTCUSDT", None, |msg| {
+        println!("Ticker (fallback): {:?}", msg);
+    }).await?;
+
+    // Depth (order book)
+    client.subscribe_with_handler("BTCUSDT", Some(Channel::Depth), |msg| {
+        println!("Depth: {:?}", msg);
+    }).await?;
+
+    // OHLC (candlesticks)
+    client.subscribe_with_handler("BTCUSDT", Some(Channel::Ohlc), |msg| {
+        println!("OHLC: {:?}", msg);
+    }).await?;
+
+    Ok(())
+}
+```
+
+> Until that API lands, use `get_ticker_with_handler` as shown in **Quickstart**.
+
+---
+
+## 🔐 Authentication
+
+- **Public channels** (ticker, depth, ohlc) do **not** require real API keys.  
+- **Private channels** (if implemented in the future) will require valid keys and signature.
+
+---
+
+## 📜 License
+
+This project is licensed under the [MIT license](./LICENSE).
