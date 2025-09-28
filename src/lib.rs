@@ -4,6 +4,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream, MaybeTlsStream};
 use sha2::{Sha256};
 use tokio::net::TcpStream;
+use base64::{Engine as _, engine::general_purpose};
 
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -15,6 +16,23 @@ pub struct Client {
 pub struct ApiKeys {
     public_key: String,
     private_key: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum Channel {
+    Ticker,
+    Depth,
+    Ohlc,
+}
+
+impl Channel {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Channel::Ticker => "ticker",
+            Channel::Depth => "depth",
+            Channel::Ohlc => "ohlc",
+        }
+    }
 }
 
 impl ApiKeys {
@@ -41,7 +59,6 @@ impl<'i> Client {
         }
     }
 
-    /// Set the client's API keys.
     pub fn set_keys(&mut self, keys: ApiKeys) {
         self.keys = keys;
     }
@@ -51,9 +68,9 @@ impl<'i> Client {
     ) -> Message {
         let nonce = 3000;
         let timestamp = Utc::now().timestamp_millis().to_string();
-        let mut mac = Hmac::<Sha256>::new_from_slice(&base64::decode(self.keys.private_key.clone()).unwrap()).unwrap();
+        let mut mac = Hmac::<Sha256>::new_from_slice(&general_purpose::STANDARD.decode(self.keys.private_key.clone()).unwrap()).unwrap();
         mac.update((self.keys.public_key.clone() + &timestamp).as_bytes());
-        let signature: String = base64::encode(mac.finalize().into_bytes());
+        let signature: String = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
         let message = Message::from(format!("[114,{{\"type\":114, \"publicKey\":\"{}\", \"timestamp\":{}, \"nonce\":{}, \"signature\": \"{}\"}}]", self.keys.public_key.clone(), timestamp, nonce, signature));
         return message;
     }
@@ -62,27 +79,34 @@ impl<'i> Client {
         let (ws_stream, _response) = connect_async(url).await.expect("Failed to connect");
         return ws_stream;
     }
-    pub async fn get_ticker_with_handler<F>(
-        &mut self,
-        event_type: &str,
-        mut handler: F,
-    ) -> Result<(), Box<dyn std::error::Error>>
-    where
-        F: FnMut(Message) + Send + 'static,
-    {
-        let ws_stream = Self::create_connection(&self);
-        let (mut write, mut read) = ws_stream.await.split();
-        let subscription_message = Message::from(format!(
-            "[151,{{\"type\":151, \"channel\":\"ticker\", \"event\":\"{}\", \"join\":true}}]",
-            event_type
-        ));
-        write.send(subscription_message).await.unwrap();
-
-        while let Some(msg) = read.next().await {
-            handler(msg?);
+        pub async fn subscribe_with_handler<F>(
+            &mut self,
+            pair: &str,
+            channel: Option<Channel>, // None → fallback to ticker
+            mut handler: F,
+        ) -> Result<(), Box<dyn std::error::Error>>
+        where
+            F: FnMut(Message) + Send + 'static,
+        {
+            let ws_stream = Self::create_connection(&self);
+            let (mut write, mut read) = ws_stream.await.split();
+    
+            let channel = channel.unwrap_or(Channel::Ticker);
+    
+            let subscription_message = Message::from(format!(
+                "[151,{{\"type\":151, \"channel\":\"{}\", \"event\":\"{}\", \"join\":true}}]",
+                channel.as_str(),
+                pair
+            ));
+    
+            write.send(subscription_message).await?;
+    
+            while let Some(msg) = read.next().await {
+                handler(msg?);
+            }
+    
+            Ok(())
         }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -91,7 +115,6 @@ mod tests {
     use chrono::Utc;
     use sha2::Sha256;
     use hmac::{Hmac, Mac};
-    use base64;
 
     #[test]
     fn create_api_keys() {
@@ -108,9 +131,9 @@ mod tests {
             let token = client.clone().generate_token_message();
             let nonce = 3000;
             let timestamp = Utc::now().timestamp_millis().to_string();
-            let mut mac = Hmac::<Sha256>::new_from_slice(&base64::decode(client.keys.private_key.clone()).unwrap()).unwrap();
+            let mut mac = Hmac::<Sha256>::new_from_slice(&general_purpose::STANDARD.decode(client.keys.private_key.clone()).unwrap()).unwrap();
             mac.update((client.keys.public_key.clone() + &timestamp).as_bytes());
-            let expected_signature: String = base64::encode(mac.finalize().into_bytes());
+            let expected_signature: String = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
             let expected_message = Message::from(format!("[114,{{\"type\":114, \"publicKey\":\"{}\", \"timestamp\":{}, \"nonce\":{}, \"signature\": \"{}\"}}]", client.keys.public_key.clone(), timestamp, nonce, expected_signature));
 
             assert_eq!(token, expected_message);
