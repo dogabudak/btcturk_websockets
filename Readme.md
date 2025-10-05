@@ -1,52 +1,46 @@
 # 📦 btcturk_websockets
 
-![Rust Version](https://img.shields.io/badge/rust-1.70%2B-green.svg)  
-[![Crates.io](https://img.shields.io/crates/v/btcturk_websockets.svg)](https://crates.io/crates/btcturk_websockets)  
-[![Docs.rs](https://docs.rs/btcturk_websockets/badge.svg)](https://docs.rs/btcturk_websockets)  
+![Rust Version](https://img.shields.io/badge/rust-1.70%2B-green.svg)
+[![Crates.io](https://img.shields.io/crates/v/btcturk_websockets.svg)](https://crates.io/crates/btcturk_websockets)
+[![Docs.rs](https://docs.rs/btcturk_websockets/badge.svg)](https://docs.rs/btcturk_websockets)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-A Rust client for the **BtcTurk WebSocket API**.  
-Subscribe to live **ticker** data today; designed to extend to **depth (order book)** and **OHLC** channels.
+A lightweight **Rust client** for the [BtcTurk WebSocket API](https://docs.btcturk.com/).  
+Easily subscribe to **real-time ticker** and **order book (depth)** channels — no authentication required.
 
 ---
 
 ## 🚀 Installation
 
-Add this to your `Cargo.toml` (use your published minor series):
+Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 btcturk_websockets = "0.4.1"
 ```
 
-> Check the latest version on crates.io if newer is available.
+> Check [crates.io](https://crates.io/crates/btcturk_websockets) for the latest version.
 
 ---
 
-## 🔧 Quickstart (works with current API)
-
-The current public API exposes `Client::get_ticker_with_handler` which yields raw WebSocket messages.  
-For public data, dummy keys are fine (BtcTurk doesn’t require auth for ticker).
+## ⚡ Quickstart
 
 ```rust
-use btcturk_websockets::{Client, ApiKeys};
-use tokio_tungstenite::tungstenite::protocol::Message;
+use btcturk_websockets::{ApiKeys, Client};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Public feeds don't need real keys; the Client struct requires them, so any strings work here.
+    // Public channels don't require real keys
     let api_keys = ApiKeys::new("dummy_public", "dummy_private");
+    let mut client = Client::new("wss://ws-feed-pro.btcturk.com/".to_string(), api_keys);
 
-    // Connect to BtcTurk feed
-    let mut client = Client::new(
-        "wss://ws-feed-pro.btcturk.com/".to_string(),
-        api_keys,
-    );
-
-    // Subscribe to BTC/USDT ticker and print raw messages
+    // Subscribe to live ticker updates
     client
-        .get_ticker_with_handler("BTCUSDT", |msg: Message| {
-            println!("Ticker: {:?}", msg);
+        .subscribe_ticker("BTCTRY", |t| {
+            println!(
+                "✅ {} → last: {}, bid: {}, ask: {}",
+                t.pair_symbol, t.last, t.bid, t.ask
+            );
         })
         .await?;
 
@@ -54,59 +48,83 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### Run as an example
-
-Create `examples/ticker.rs` with the code above, then:
-
-```bash
-cargo run --example ticker
-```
-
 ---
 
-## 🧱 Roadmap (optional API you may add)
-
-If/when you add a unified subscribe function and a `Channel` enum, usage could look like this:
+## 📊 Example: Order Book (Depth)
 
 ```rust
-// hypothetically provided by a newer crate version
-use btcturk_websockets::{Client, ApiKeys, Channel};
+use btcturk_websockets::{ApiKeys, Client};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_keys = ApiKeys::new("dummy_public", "dummy_private");
-    let mut client = Client::new("wss://ws-feed-pro.btcturk.com/".into(), api_keys);
+    let mut client = Client::new("wss://ws-feed-pro.btcturk.com/".to_string(), api_keys);
 
-    // Fallback to ticker if None
-    client.subscribe_with_handler("BTCUSDT", None, |msg| {
-        println!("Ticker (fallback): {:?}", msg);
-    }).await?;
+    client
+        .subscribe_depth("BTCTRY", |d| {
+            println!("📊 Depth update for {}:", d.event);
 
-    // Depth (order book)
-    client.subscribe_with_handler("BTCUSDT", Some(Channel::Depth), |msg| {
-        println!("Depth: {:?}", msg);
-    }).await?;
+            if let (Some(bid), Some(ask)) = (d.bids.first(), d.asks.first()) {
+                println!("  🟩 Best bid: {} @ {}", bid[1], bid[0]);
+                println!("  🟥 Best ask: {} @ {}", ask[1], ask[0]);
+            }
 
-    // OHLC (candlesticks)
-    client.subscribe_with_handler("BTCUSDT", Some(Channel::Ohlc), |msg| {
-        println!("OHLC: {:?}", msg);
-    }).await?;
+            println!("  ({} bids / {} asks)", d.bids.len(), d.asks.len());
+            println!("------------------------------------");
+        })
+        .await?;
 
     Ok(())
 }
 ```
 
-> Until that API lands, use `get_ticker_with_handler` as shown in **Quickstart**.
-
 ---
 
 ## 🔐 Authentication
 
-- **Public channels** (ticker, depth, ohlc) do **not** require real API keys.  
-- **Private channels** (if implemented in the future) will require valid keys and signature.
+- **Public channels** (`ticker`, `depth`) do **not** require real API keys.
+- **Private channels** (not yet implemented) will use the `generate_token_message` method
+  with your API key/secret.
+
+---
+
+## 🧩 Channels
+
+| Channel | Description | Example Method |
+|----------|--------------|----------------|
+| `ticker` | Real-time market prices, volume, and last trades | `subscribe_ticker()` |
+| `depth` | Order book snapshots and changes | `subscribe_depth()` |
+
+---
+
+## 🧱 Architecture
+
+- **WebSocket backend:** [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite)
+- **Async runtime:** [`tokio`](https://crates.io/crates/tokio)
+- **Serialization:** [`serde` / `serde_json`](https://serde.rs/)
+- **Auth signing:** [`hmac` + `sha2` + `base64`]
+
+All messages are deserialized into typed Rust structs:
+```rust
+TickerEvent { pair_symbol, bid, ask, last, volume, ... }
+DepthEvent  { bids, asks, pair_id, ... }
+```
+
+---
+
+## 🧠 Roadmap
+
+- [ ] Add trade history (recent trades) channel  
+- [ ] Add private user data channels (balance, order updates)  
+- [ ] Add reconnection + heartbeat support  
+- [ ] Add optional REST OHLC fetcher  
 
 ---
 
 ## 📜 License
 
-This project is licensed under the [MIT license](./LICENSE).
+This project is licensed under the [MIT License](./LICENSE).
+
+---
+
+**Made with 🦀 in Rust** – contributions welcome!
