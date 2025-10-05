@@ -1,4 +1,5 @@
 use btcturk_websockets::{ApiKeys, Client};
+use tokio::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -6,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::new("wss://ws-feed-pro.btcturk.com/".to_string(), api_keys);
 
     client
-        .subscribe_depth("BTCTRY", |d| {
+        .subscribe_depth_with_snapshot("BTCTRY", Duration::from_secs(1), |d| {
             println!("📊 Depth update for {}:", d.event);
 
             if let (Some(bid), Some(ask)) = (d.bids.first(), d.asks.first()) {

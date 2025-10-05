@@ -17,6 +17,8 @@ use tokio_tungstenite::{
 use base64::{engine::general_purpose, Engine as _};
 use serde_json;
 use std::sync::{Arc, Mutex};
+use tokio::time::{self, Duration, Instant};
+use reqwest;
 
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -58,7 +60,136 @@ impl Client {
             .expect("Failed to connect to BtcTurk WebSocket");
         ws_stream
     }
-
+    pub async fn subscribe_depth_with_snapshot<F>(
+        &mut self,
+        pair: &str,
+        interval: Duration,
+        handler: F,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        F: FnMut(DepthEvent) + Send + 'static,
+    {
+        let handler = Arc::new(Mutex::new(handler));
+        let last_update = Arc::new(tokio::sync::Mutex::new(Instant::now()));
+    
+        // 1️⃣ Fetch initial snapshot via REST
+        println!("🌐 Fetching initial REST snapshot...");
+        if let Some(snapshot) = Self::fetch_depth_snapshot(pair).await {
+            if let Ok(mut h) = handler.lock() {
+                (h)(snapshot);
+            }
+        }
+    
+        // 2️⃣ Spawn timer task to refresh snapshot if idle
+        {
+            let handler = Arc::clone(&handler);
+            let pair = pair.to_string();
+            let last_update = last_update.clone();
+    
+            tokio::spawn(async move {
+                let mut ticker = time::interval(interval);
+                loop {
+                    ticker.tick().await;
+                    let elapsed = last_update.lock().await.elapsed();
+                    if elapsed > interval {
+                        println!(
+                            "🕒 No depth updates for {:?} — refreshing REST snapshot...",
+                            interval
+                        );
+                        if let Some(snapshot) = Client::fetch_depth_snapshot(&pair).await {
+                            if let Ok(mut h) = handler.lock() {
+                                (h)(snapshot);
+                            }
+                            *last_update.lock().await = Instant::now();
+                        }
+                    }
+                }
+            });
+        }
+    
+        // 3️⃣ Start WebSocket subscription
+        self.subscribe_depth(pair, {
+            let handler = Arc::clone(&handler);
+            let last_update = last_update.clone();
+            move |d| {
+                tokio::spawn({
+                    let last_update = last_update.clone();
+                    async move {
+                        *last_update.lock().await = Instant::now();
+                    }
+                });
+                if let Ok(mut h) = handler.lock() {
+                    (h)(d);
+                }
+            }
+        })
+        .await
+    }
+    
+    /// Helper: fetch orderbook snapshot via REST API
+    async fn fetch_depth_snapshot(pair: &str) -> Option<DepthEvent> {
+        let url = format!("https://api.btcturk.com/api/v2/orderbook?pairSymbol={}", pair);
+        match reqwest::get(&url).await {
+            Ok(resp) => match resp.text().await {
+                Ok(body) => {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                        if let Some(data) = json.get("data") {
+                            let bids = data["bids"]
+                                .as_array()
+                                .unwrap_or(&vec![])
+                                .iter()
+                                .filter_map(|b| {
+                                    if let Some(arr) = b.as_array() {
+                                        if arr.len() == 2 {
+                                            Some([
+                                                arr[0].as_str().unwrap_or("").to_string(),
+                                                arr[1].as_str().unwrap_or("").to_string(),
+                                            ])
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<[String; 2]>>();
+    
+                            let asks = data["asks"]
+                                .as_array()
+                                .unwrap_or(&vec![])
+                                .iter()
+                                .filter_map(|a| {
+                                    if let Some(arr) = a.as_array() {
+                                        if arr.len() == 2 {
+                                            Some([
+                                                arr[0].as_str().unwrap_or("").to_string(),
+                                                arr[1].as_str().unwrap_or("").to_string(),
+                                            ])
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<[String; 2]>>();
+    
+                            return Some(DepthEvent {
+                                type_field: 0,
+                                channel: "depth".into(),
+                                event: pair.into(),
+                                bids,
+                                asks,
+                            });
+                        }
+                    }
+                    None
+                }
+                Err(_) => None,
+            },
+            Err(_) => None,
+        }
+    }
     pub async fn subscribe_with_handler<F>(
         &mut self,
         pair: &str,
