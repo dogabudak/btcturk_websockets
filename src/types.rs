@@ -41,19 +41,37 @@ pub struct TickerEvent {
     pub pair_id: i32,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct DepthEvent {
+#[derive(Debug, Clone, Deserialize)]
+pub struct OrderBookOrder {
+    #[serde(rename = "A")]
+    pub amount: String,
+    #[serde(rename = "P")]
+    pub price: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OrderBookEvent {
     #[serde(rename = "type")]
     pub type_field: i32,
     pub channel: String,
     pub event: String,
-    pub bids: Vec<[String; 2]>,
-    pub asks: Vec<[String; 2]>,
+
+    #[serde(rename = "PS")]
+    pub pair_symbol: String,
+
+    #[serde(rename = "CS")]
+    pub change_seq: Option<i64>,
+
+    #[serde(rename = "AO")]
+    pub asks: Vec<OrderBookOrder>,
+
+    #[serde(rename = "BO")]
+    pub bids: Vec<OrderBookOrder>,
 }
 
 #[derive(Debug)]
 pub enum Event {
     Ticker(TickerEvent),
-    Depth(DepthEvent),
+    OrderBook(OrderBookEvent),
     Unknown(serde_json::Value),
 }

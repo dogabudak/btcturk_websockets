@@ -2,24 +2,23 @@
 name = "btcturk_websockets"
 version = "1.0.0"
 edition = "2021"
+authors = ["Doğa Budak <dogabudak@gmail.com>"]
 license = "MIT"
-keywords = ["websockets", "btcturk"]
-description= "A Rust library for interacting with the BTCTurk Websockets API."
+description = "A Rust client for the BtcTurk WebSocket API with real-time ticker and orderbook channels"
+repository = "https://github.com/piarcha/btcturk_websockets"
+documentation = "https://docs.rs/btcturk_websockets"
+readme = "README.md"
+keywords = ["btcturk", "websocket", "crypto", "ticker", "orderbook"]
+categories = ["api-bindings", "cryptography", "asynchronous"]
 
 [dependencies]
-base64 = "0.21.2"
-chrono = "0.4.26"
-dotenv = "0.15.0"
-futures = "0.3.28"
-futures-channel = "0.3.28"
-futures-util = "0.3.28"
-hex-literal = "0.4.1"
-hmac = "0.12.1"
-sha2 = "0.10.7"
-tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "time"]}
-tokio-tungstenite = { version = "0.17", features = ["native-tls"] }
-url = "2.4.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
-
+chrono = "0.4"
+url = "2"

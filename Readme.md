@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-btcturk_websockets = "0.4.1"
+btcturk_websockets = "1.0.0"
 ```
 
 > Check [crates.io](https://crates.io/crates/btcturk_websockets) for the latest version.
@@ -61,16 +61,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::new("wss://ws-feed-pro.btcturk.com/".to_string(), api_keys);
 
     client
-        .subscribe_depth("BTCTRY", |d| {
-            println!("📊 Depth update for {}:", d.event);
-
-            if let (Some(bid), Some(ask)) = (d.bids.first(), d.asks.first()) {
-                println!("  🟩 Best bid: {} @ {}", bid[1], bid[0]);
-                println!("  🟥 Best ask: {} @ {}", ask[1], ask[0]);
+        .subscribe_orderbook("BTCTRY", |ob| {
+            if let (Some(bid), Some(ask)) = (ob.bids.first(), ob.asks.first()) {
+                println!(
+                    "📊 {} → Best Bid: {} @ {}, Best Ask: {} @ {}",
+                    ob.pair_symbol, bid.amount, bid.price, ask.amount, ask.price
+                );
             }
-
-            println!("  ({} bids / {} asks)", d.bids.len(), d.asks.len());
-            println!("------------------------------------");
         })
         .await?;
 
@@ -82,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 🔐 Authentication
 
-- **Public channels** (`ticker`, `depth`) do **not** require real API keys.
+- **Public channels** (`ticker`, `orderbook`) do **not** require real API keys.
 - **Private channels** (not yet implemented) will use the `generate_token_message` method
   with your API key/secret.
 
@@ -93,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | Channel | Description | Example Method |
 |----------|--------------|----------------|
 | `ticker` | Real-time market prices, volume, and last trades | `subscribe_ticker()` |
-| `depth` | Order book snapshots and changes | `subscribe_depth()` |
+| `orderbook` | Order book snapshots and updates | `subscribe_orderbook()` |
 
 ---
 
@@ -107,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 All messages are deserialized into typed Rust structs:
 ```rust
 TickerEvent { pair_symbol, bid, ask, last, volume, ... }
-DepthEvent  { bids, asks, pair_id, ... }
+OrderBookEvent { bids, asks, pair_symbol, ... }
 ```
 
 ---
@@ -121,10 +118,71 @@ DepthEvent  { bids, asks, pair_id, ... }
 
 ---
 
-## 📜 License
+## 🔧 Code Review & Tasks
 
-This project is licensed under the [MIT License](./LICENSE).
+### 🛠️ Code Quality Improvements
+
+- [ ] **Add comprehensive error types** - Create custom error enum instead of using `Box<dyn std::error::Error>`
+- [ ] **Improve documentation** - Add rustdoc comments for all public APIs and structs
+- [ ] **Add unit tests** - Create test module with tests for parsing, authentication, and connection logic
+- [ ] **Add integration tests** - Test actual WebSocket connections with mock server
+- [ ] **Fix hardcoded nonce in authentication** - `generate_token_message()` uses hardcoded nonce value `3000` which should be random/unique per request
+- [ ] **Improve error handling** - Replace `unwrap()` calls with proper error propagation, especially in `create_connection()` and base64 decoding
+- [ ] **Add input validation** - Validate API keys format and WebSocket URL before connection attempts
+- [ ] **Fix potential panic in base64 decoding** - `general_purpose::STANDARD.decode(&self.keys.private_key).unwrap()` can panic
+
+### 🏗️ Architecture Enhancements
+
+- [ ] **Implement connection pooling** - Allow multiple concurrent subscriptions without creating new connections
+- [ ] **Add reconnection logic** - Implement automatic reconnection with exponential backoff
+- [ ] **Add heartbeat/ping mechanism** - Keep connections alive with periodic ping messages
+- [ ] **Implement graceful shutdown** - Add proper cleanup and connection termination
+- [ ] **Add connection state management** - Track connection status and provide state queries
+
+### 🔒 Security & Robustness
+
+- [ ] **Secure API key storage** - Consider using `secrecy` crate for sensitive data
+- [ ] **Add rate limiting** - Implement rate limiting for subscription requests
+- [ ] **Validate message integrity** - Add checksum validation for incoming messages
+- [ ] **Add connection timeout** - Implement connection timeout and retry logic
+
+### 📊 Data Handling Improvements
+
+- [ ] **Add data validation** - Validate incoming JSON structure before deserialization
+- [ ] **Improve type safety** - Use `Decimal` type for price/amount fields instead of `String`
+- [ ] **Add data filtering** - Allow filtering messages by pair or event type
+- [ ] **Implement message buffering** - Add optional message buffering for high-frequency updates
+
+### 🧪 Testing & Documentation
+
+- [ ] **Add example with error handling** - Create example showing proper error handling patterns
+- [ ] **Add performance benchmarks** - Benchmark message parsing and connection performance
+- [ ] **Add API documentation** - Generate and host comprehensive API documentation
+- [ ] **Add usage examples** - Create more comprehensive usage examples for different scenarios
+
+### 🚀 Performance Optimizations
+
+- [ ] **Optimize JSON parsing** - Use streaming JSON parser for large messages
+- [ ] **Add message compression** - Support WebSocket compression for bandwidth optimization
+- [ ] **Implement message batching** - Batch multiple updates into single handler calls
+- [ ] **Add memory usage monitoring** - Track and optimize memory usage for long-running connections
+
+### 🔧 Configuration & Flexibility
+
+- [ ] **Add configuration struct** - Create `ClientConfig` for customizable connection settings
+- [ ] **Add environment variable support** - Allow configuration via environment variables
+- [ ] **Add logging support** - Integrate with `log` crate for better debugging
+- [ ] **Add metrics collection** - Add optional metrics collection for monitoring
+
+### 📱 API Improvements
+
+- [ ] **Add subscription management** - Allow subscribing/unsubscribing from multiple channels
+- [ ] **Add message filtering** - Filter messages by pair, event type, or custom criteria
+- [ ] **Add callback error handling** - Allow handlers to return errors and handle them gracefully
+- [ ] **Add async handlers** - Support async handlers for complex processing
 
 ---
 
-**Made with 🦀 in Rust** – contributions welcome!
+---
+
+**Made with 🦀 in Rust** – All contributions welcome!
