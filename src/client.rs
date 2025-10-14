@@ -20,7 +20,6 @@ use serde_json;
 use std::sync::{Arc, Mutex};
 use reqwest;
 
-/// Represents an API client that can handle both WebSocket and REST calls.
 #[derive(Debug, Clone)]
 pub struct Client {
     address: String,
@@ -28,7 +27,6 @@ pub struct Client {
     http_client: reqwest::Client,
 }
 
-/// A single asset balance from the /users/balances endpoint.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Balance {
     pub asset: String,
@@ -44,7 +42,6 @@ pub struct Balance {
     pub timestamp: i64,
 }
 
-/// Response wrapper for /users/balances
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BalanceResponse {
     pub data: Vec<Balance>,
@@ -72,7 +69,6 @@ impl Client {
         let timestamp = Utc::now().timestamp_millis();
         let data = format!("{}{}", self.keys.public_key, timestamp);
     
-        // 🧩 Decode API secret (supports both Base64 variants)
         let decoded_secret = match general_purpose::STANDARD.decode(&self.keys.private_key) {
             Ok(bytes) => bytes,
             Err(_) => general_purpose::URL_SAFE_NO_PAD
@@ -137,7 +133,6 @@ impl Client {
         ws_stream
     }
 
-    /// Generic subscription entry point
     pub async fn subscribe_with_handler<F>(
         &mut self,
         pair: &str,
