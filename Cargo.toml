@@ -1,6 +1,6 @@
 [package]
 name = "btcturk_websockets"
-version = "1.0.2"
+version = "1.1.0"
 edition = "2021"
 authors = ["Doğa Budak <dogabudak@gmail.com>"]
 license = "MIT"
