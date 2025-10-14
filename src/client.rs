@@ -15,13 +15,39 @@ use tokio_tungstenite::{
     WebSocketStream,
 };
 use base64::{engine::general_purpose, Engine as _};
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::sync::{Arc, Mutex};
+use reqwest;
 
 #[derive(Debug, Clone)]
 pub struct Client {
     address: String,
     keys: ApiKeys,
+    http_client: reqwest::Client,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Balance {
+    pub asset: String,
+    pub assetname: String,
+    pub balance: String,
+    pub locked: String,
+    pub free: String,
+    #[serde(rename = "orderFund")]
+    pub order_fund: String,
+    #[serde(rename = "requestFund")]
+    pub request_fund: String,
+    pub precision: i32,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BalanceResponse {
+    pub data: Vec<Balance>,
+    pub success: bool,
+    pub message: Option<String>,
+    pub code: i32,
 }
 
 impl Client {
@@ -29,6 +55,7 @@ impl Client {
         Self {
             address: address.into(),
             keys,
+            http_client: reqwest::Client::new(),
         }
     }
 
@@ -36,6 +63,51 @@ impl Client {
         self.keys = keys;
     }
 
+    fn auth_headers(&self) -> Result<reqwest::header::HeaderMap, Box<dyn std::error::Error>> {
+        use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+    
+        let timestamp = Utc::now().timestamp_millis();
+        let data = format!("{}{}", self.keys.public_key, timestamp);
+    
+        let decoded_secret = match general_purpose::STANDARD.decode(&self.keys.private_key) {
+            Ok(bytes) => bytes,
+            Err(_) => general_purpose::URL_SAFE_NO_PAD
+                .decode(&self.keys.private_key)
+                .map_err(|_| "Failed to decode API secret as Base64")?,
+        };
+    
+        let mut mac = Hmac::<Sha256>::new_from_slice(&decoded_secret)?;
+        mac.update(data.as_bytes());
+        let signature = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
+    
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert("X-PCK", HeaderValue::from_str(&self.keys.public_key)?);
+        headers.insert("X-Stamp", HeaderValue::from_str(&timestamp.to_string())?);
+        headers.insert("X-Signature", HeaderValue::from_str(&signature)?);
+    
+        Ok(headers)
+    }
+
+    pub async fn get_account_balance(
+        &self,
+    ) -> Result<BalanceResponse, Box<dyn std::error::Error>> {
+        let url = "https://api.btcturk.com/api/v1/users/balances";
+        let headers = self.auth_headers()?;
+
+        let res = self
+            .http_client
+            .get(url)
+            .headers(headers)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let body: BalanceResponse = res.json().await?;
+        Ok(body)
+    }
+
+    /// Generates WebSocket authentication token message
     pub fn generate_token_message(&mut self) -> Message {
         let nonce = 3000;
         let timestamp = Utc::now().timestamp_millis().to_string();
@@ -61,7 +133,6 @@ impl Client {
         ws_stream
     }
 
-    /// Generic subscription entry point
     pub async fn subscribe_with_handler<F>(
         &mut self,
         pair: &str,
@@ -113,12 +184,11 @@ impl Client {
                         }
                     }
 
-                    // Skip internal system messages
                     if !text.starts_with("[991")
                         && !text.starts_with("[100")
                         && !text.starts_with("[101")
                     {
-                        eprintln!("⚠️ Unparsed message: {}", text);
+                        eprintln!("⚠️ Unparsed message: {text}");
                     }
                 }
                 Message::Close(_) => {
