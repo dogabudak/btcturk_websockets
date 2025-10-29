@@ -129,8 +129,18 @@ impl Client {
             return Err(format!("API Error ({}): {}", status, error_text).into());
         }
 
-        // For successful responses, parse JSON
-        let body: SubmitOrderResponse = res.json().await?;
+        let response_text = res.text().await?;
+        
+        let json_value: serde_json::Value = serde_json::from_str(&response_text)?;
+        
+        let body = if json_value.get("data").is_some() {
+            serde_json::from_value::<SubmitOrderResponse>(json_value["data"].clone())
+                .map_err(|e| format!("Failed to deserialize order response from data field: {}. Raw response: {}", e, response_text))?
+        } else {
+            serde_json::from_str::<SubmitOrderResponse>(&response_text)
+                .map_err(|e| format!("Failed to deserialize order response: {}. Raw response: {}", e, response_text))?
+        };
+        
         Ok(body)
     }
 
@@ -153,6 +163,24 @@ impl Client {
 
         let body: TickerRestResponse = res.json().await?;
         Ok(body)
+    }
+
+    pub async fn get_exchange_info(&self) -> Result<crate::types::ExchangeInfoResponse, Box<dyn std::error::Error>> {
+        let url = "https://api.btcturk.com/api/v2/server/exchangeinfo";
+        
+        let res = self
+            .http_client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let body: crate::types::ExchangeInfoResponse = res.json().await?;
+        Ok(body)
+    }
+
+    pub fn get_symbol_info<'a>(&self, exchange_info: &'a crate::types::ExchangeInfoResponse, pair_symbol: &str) -> Option<&'a crate::types::SymbolInfo> {
+        exchange_info.data.symbols.iter().find(|s| s.name == pair_symbol)
     }
 
     /// Generates WebSocket authentication token message

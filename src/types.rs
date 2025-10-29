@@ -39,12 +39,15 @@ pub struct SubmitOrderRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SubmitOrderResponse {
     pub id: u64,
-    pub timestamp: u64,
+    #[serde(alias = "timestamp")]
+    pub datetime: u64,
     pub r#type: String,
     pub method: String,
     pub price: String,
-    pub amount: String,
+    #[serde(alias = "amount")]
+    pub quantity: String,
     pub pair_symbol: String,
+    #[serde(rename = "newOrderClientId")]
     pub new_order_client_id: String,
 }
 
@@ -129,20 +132,158 @@ pub struct TickerRestResponse {
     pub data: Vec<TickerRestData>,
 }
 
+// Helper function to deserialize numbers or strings as strings
+fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct NumberOrStringVisitor;
+
+    impl<'de> Visitor<'de> for NumberOrStringVisitor {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a number or a string")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+    }
+
+    deserializer.deserialize_any(NumberOrStringVisitor)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TickerRestData {
     #[serde(rename = "pair")]
     pub pair_symbol: String,
-    #[serde(rename = "bid")]
+    #[serde(rename = "bid", deserialize_with = "deserialize_number_or_string")]
     pub bid: String,
-    #[serde(rename = "ask")]
+    #[serde(rename = "ask", deserialize_with = "deserialize_number_or_string")]
     pub ask: String,
-    #[serde(rename = "last")]
+    #[serde(rename = "last", deserialize_with = "deserialize_number_or_string")]
     pub last: String,
-    #[serde(rename = "high")]
+    #[serde(rename = "high", deserialize_with = "deserialize_number_or_string")]
     pub high: String,
-    #[serde(rename = "low")]
+    #[serde(rename = "low", deserialize_with = "deserialize_number_or_string")]
     pub low: String,
-    #[serde(rename = "volume")]
+    #[serde(rename = "volume", deserialize_with = "deserialize_number_or_string")]
     pub volume: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExchangeInfoResponse {
+    pub data: ExchangeInfoData,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExchangeInfoData {
+    pub symbols: Vec<SymbolInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SymbolInfo {
+    pub id: i32,
+    pub name: String,
+    #[serde(rename = "nameNormalized")]
+    pub name_normalized: String,
+    #[serde(rename = "numeratorScale")]
+    pub numerator_scale: i32,
+    #[serde(rename = "denominatorScale")]
+    pub denominator_scale: i32,
+    #[serde(rename = "maximumLimitOrderPrice", deserialize_with = "deserialize_option_number_or_string")]
+    pub maximum_limit_order_price: Option<String>,
+    #[serde(rename = "minimumLimitOrderPrice", deserialize_with = "deserialize_option_number_or_string")]
+    pub minimum_limit_order_price: Option<String>,
+}
+
+// Helper function to deserialize optional numbers or strings as strings
+fn deserialize_option_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct OptionNumberOrStringVisitor;
+
+    impl<'de> Visitor<'de> for OptionNumberOrStringVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("an optional number or a string")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            deserialize_number_or_string(deserializer).map(Some)
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+    }
+
+    deserializer.deserialize_option(OptionNumberOrStringVisitor)
 }
