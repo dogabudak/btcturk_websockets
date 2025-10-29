@@ -17,6 +17,7 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 btcturk_websockets = "1.0.0"
+dotenvy = "0.15" # For loading .env files in examples
 ```
 
 > Check [crates.io](https://crates.io/crates/btcturk_websockets) for the latest version.
@@ -27,11 +28,17 @@ btcturk_websockets = "1.0.0"
 
 ```rust
 use btcturk_websockets::{ApiKeys, Client};
+use dotenvy::dotenv;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Public channels don't require real keys
-    let api_keys = ApiKeys::new("dummy_public", "dummy_private");
+    dotenv().ok(); // Load .env file
+
+    // Public channels don't require real keys, but we'll use env vars if available
+    let public_key = env::var("BTCTURK_PUBLIC_KEY").unwrap_or_else(|_| "dummy_public".to_string());
+    let private_key = env::var("BTCTURK_PRIVATE_KEY").unwrap_or_else(|_| "dummy_private".to_string());
+
+    let api_keys = ApiKeys::new(public_key, private_key);
     let mut client = Client::new("wss://ws-feed-pro.btcturk.com/".to_string(), api_keys);
 
     // Subscribe to live ticker updates
@@ -54,10 +61,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust
 use btcturk_websockets::{ApiKeys, Client};
+use dotenvy::dotenv;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_keys = ApiKeys::new("dummy_public", "dummy_private");
+    dotenv().ok(); // Load .env file
+
+    let public_key = env::var("BTCTURK_PUBLIC_KEY").unwrap_or_else(|_| "dummy_public".to_string());
+    let private_key = env::var("BTCTURK_PRIVATE_KEY").unwrap_or_else(|_| "dummy_private".to_string());
+
+    let api_keys = ApiKeys::new(public_key, private_key);
     let mut client = Client::new("wss://ws-feed-pro.btcturk.com/".to_string(), api_keys);
 
     client
@@ -82,9 +95,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use btcturk_websockets::{ApiKeys, Client};
 use std::env;
+use dotenvy::dotenv;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv().ok(); // Load .env file
+
     let public_key = env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY not set");
     let private_key = env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY not set");
 
@@ -108,9 +124,12 @@ Place new orders using the `submit_order` method. You'll need to provide your AP
 ```rust
 use btcturk_websockets::{ApiKeys, Client, SubmitOrderRequest, OrderMethod, OrderType};
 use std::env;
+use dotenvy::dotenv;
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok(); // Load .env file
+
     let public_key = env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY not set");
     let private_key = env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY not set");
 
@@ -141,6 +160,58 @@ async fn main() {
 
 ---
 
+### 🌎 Public REST API: Get Ticker
+
+Fetch real-time ticker data for a specific pair or all available pairs using the `get_ticker` method. API keys are not required for this public endpoint.
+
+```rust
+use btcturk_websockets::{Client, ApiKeys, TickerRestResponse};
+use std::env;
+use dotenvy::dotenv;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv().ok(); // Load .env file
+
+    // API keys are not strictly required for public endpoints, but we'll initialize them for consistency
+    let public_key = env::var("BTCTURK_PUBLIC_KEY").unwrap_or_else(|_| "dummy_public".to_string());
+    let private_key = env::var("BTCTURK_PRIVATE_KEY").unwrap_or_else(|_| "dummy_private".to_string());
+
+    let api_keys = ApiKeys::new(public_key, private_key);
+    let client = Client::new("https://api.btcturk.com", api_keys);
+
+    // Fetch ticker for a specific pair
+    println!("Fetching ticker for BTCTRY:");
+    match client.get_ticker(Some("BTCTRY")).await {
+        Ok(response) => {
+            for ticker in response.data {
+                println!("  Pair: {}, Last: {}, Bid: {}, Ask: {}", ticker.pair_symbol, ticker.last, ticker.bid, ticker.ask);
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to fetch BTCTRY ticker: {}", e);
+        }
+    }
+
+    println!("\nFetching ticker for all pairs:");
+    // Fetch ticker for all pairs
+    match client.get_ticker(None).await {
+        Ok(response) => {
+            for ticker in response.data {
+                println!("  Pair: {}, Last: {}, Bid: {}, Ask: {}", ticker.pair_symbol, ticker.last, ticker.bid, ticker.ask);
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to fetch all tickers: {}", e);
+        }
+    }
+
+    Ok(())
+}
+```
+
+---
+
 ## 🧩 Channels & Features
 
 | Feature | Description | Example Method |
@@ -151,6 +222,8 @@ async fn main() {
 | **Private API** | | |
 | Account Balance | Get user account balances | `get_account_balance()` |
 | Submit Order | Place a new buy or sell order | `submit_order()` |
+| **Public REST API** | | |
+| Get Ticker | Fetch current ticker data | `get_ticker()` |
 ---
 
 ## 🧱 Architecture
@@ -165,6 +238,7 @@ All messages are deserialized into typed Rust structs:
 ```rust
 TickerEvent { pair_symbol, bid, ask, last, volume, ... }
 OrderBookEvent { bids, asks, pair_symbol, ... }
+TickerRestData { pair_symbol, bid, ask, last, high, low, volume }
 ```
 
 

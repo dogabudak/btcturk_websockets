@@ -1,7 +1,7 @@
 use crate::{
     ApiKeys,
     Channel,
-    types::{Event, TickerEvent, OrderBookEvent, SubmitOrderRequest, SubmitOrderResponse},
+    types::{Event, TickerEvent, OrderBookEvent, SubmitOrderRequest, SubmitOrderResponse, TickerRestResponse},
 };
 use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
@@ -131,6 +131,27 @@ impl Client {
 
         // For successful responses, parse JSON
         let body: SubmitOrderResponse = res.json().await?;
+        Ok(body)
+    }
+
+    pub async fn get_ticker(
+        &self,
+        pair_symbol: Option<&str>,
+    ) -> Result<TickerRestResponse, Box<dyn std::error::Error>> {
+        let mut url = reqwest::Url::parse("https://api.btcturk.com/api/v2/ticker")?;
+
+        if let Some(pair) = pair_symbol {
+            url.query_pairs_mut().append_pair("pairSymbol", pair);
+        }
+
+        let res = self
+            .http_client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let body: TickerRestResponse = res.json().await?;
         Ok(body)
     }
 

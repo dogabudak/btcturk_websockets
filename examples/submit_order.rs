@@ -11,16 +11,25 @@ async fn main() {
 
     let keys = ApiKeys::new(public_key, private_key);
     let client = Client::new("wss://ws-feed-sandbox.btcturk.com/", keys);
+    let balances = client.get_account_balance().await.unwrap();
+    let try_balance = balances
+        .data
+        .iter()
+        .find(|b| b.asset == "TRY")
+        .map(|b| b.free.replace(",", ".").parse::<f64>().unwrap_or(0.0))
+        .unwrap_or(0.0);
+
+    println!("💰 TRY balance: {}", try_balance);
 
     // Original example code
     println!("=== Original Submit Order Example ===");
     let order_request = SubmitOrderRequest {
-        quantity: "10".to_string(),
+        quantity: "1.800".to_string(),
         price: Some("50000".to_string()),
         stop_price: None,
         order_method: OrderMethod::Limit,
         order_type: OrderType::Buy,
-        pair_symbol: "BTCTRY".to_string(),
+        pair_symbol: "USDTTRY".to_string(),
         new_order_client_id: None,
     };
 
