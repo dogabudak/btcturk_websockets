@@ -1,7 +1,7 @@
 use crate::{
     ApiKeys,
     Channel,
-    types::{Event, TickerEvent, OrderBookEvent},
+    types::{Event, TickerEvent, OrderBookEvent, SubmitOrderRequest, SubmitOrderResponse},
 };
 use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
@@ -104,6 +104,33 @@ impl Client {
             .error_for_status()?;
 
         let body: BalanceResponse = res.json().await?;
+        Ok(body)
+    }
+
+    pub async fn submit_order(
+        &self,
+        request: SubmitOrderRequest,
+    ) -> Result<SubmitOrderResponse, Box<dyn std::error::Error>> {
+        let url = "https://api.btcturk.com/api/v1/order";
+        let headers = self.auth_headers()?;
+
+        let res = self
+            .http_client
+            .post(url)
+            .headers(headers)
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = res.status();
+        
+        if !status.is_success() {
+            let error_text = res.text().await.unwrap_or_else(|_| "Unable to read error response".to_string());
+            return Err(format!("API Error ({}): {}", status, error_text).into());
+        }
+
+        // For successful responses, parse JSON
+        let body: SubmitOrderResponse = res.json().await?;
         Ok(body)
     }
 

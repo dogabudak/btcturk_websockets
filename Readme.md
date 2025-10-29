@@ -81,10 +81,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust
 use btcturk_websockets::{ApiKeys, Client};
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_keys = ApiKeys::new("YOUR_PUBLIC_KEY", "YOUR_PRIVATE_KEY");
+    let public_key = env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY not set");
+    let private_key = env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY not set");
+
+    let api_keys = ApiKeys::new(public_key, private_key);
     let client = Client::new("wss://ws-feed-pro.btcturk.com/".to_string(), api_keys);
 
     // Get account balance using REST API
@@ -92,6 +96,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ Balances: {:?}", balances);
 
     Ok(())
+}
+```
+
+---
+
+### 📈 Trading: Submit an Order
+
+Place new orders using the `submit_order` method. You'll need to provide your API keys via environment variables.
+
+```rust
+use btcturk_websockets::{ApiKeys, Client, SubmitOrderRequest, OrderMethod, OrderType};
+use std::env;
+
+#[tokio::main]
+async fn main() {
+    let public_key = env::var("BTCTURK_PUBLIC_KEY").expect("BTCTURK_PUBLIC_KEY not set");
+    let private_key = env::var("BTCTURK_PRIVATE_KEY").expect("BTCTURK_PRIVATE_KEY not set");
+
+    let keys = ApiKeys::new(public_key, private_key);
+    // Use the sandbox environment for testing trades
+    let client = Client::new("wss://ws-feed-sandbox.btcturk.com/", keys);
+
+    let order_request = SubmitOrderRequest {
+        quantity: "10".to_string(),
+        price: Some("50000".to_string()),
+        stop_price: None,
+        order_method: OrderMethod::Limit,
+        order_type: OrderType::Buy,
+        pair_symbol: "BTCTRY".to_string(),
+        new_order_client_id: None,
+    };
+
+    match client.submit_order(order_request).await {
+        Ok(response) => {
+            println!("✅ Order submitted successfully: {:?}", response);
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to submit order: {}", e);
+        }
+    }
 }
 ```
 
@@ -106,6 +150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `orderbook` | Order book snapshots and updates | `subscribe_orderbook()` |
 | **Private API** | | |
 | Account Balance | Get user account balances | `get_account_balance()` |
+| Submit Order | Place a new buy or sell order | `submit_order()` |
 ---
 
 ## 🧱 Architecture
@@ -122,16 +167,5 @@ TickerEvent { pair_symbol, bid, ask, last, volume, ... }
 OrderBookEvent { bids, asks, pair_symbol, ... }
 ```
 
----
-
-## 🧠 Roadmap
-
-- [ ] Add trade history (recent trades) channel  
-- [ ] Add reconnection + heartbeat support  
-- [ ] Add optional REST OHLC fetcher
-- [ ] Add order placement and cancellation endpoints
-- [ ] Add user orders and trades WebSocket channels  
-
----
 
 **Made with 🦀 in Rust** – All contributions welcome!
