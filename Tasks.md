@@ -37,7 +37,7 @@
 - [ ] **Add example with error handling** - Create example showing proper error handling patterns
 - [ ] **Add performance benchmarks** - Benchmark message parsing and connection performance
 - [ ] **Add API documentation** - Generate and host comprehensive API documentation
-- [ ] **Add more usage examples** - Create examples for trading operations and advanced scenarios
+- [x] **Add more usage examples** - Create examples for trading operations and advanced scenarios
 
 ### 🚀 Performance Optimizations
 
@@ -49,12 +49,14 @@
 ### 🔧 Configuration & Flexibility
 
 - [ ] **Add configuration struct** - Create `ClientConfig` for customizable connection settings
-- [ ] **Add environment variable support** - Allow configuration via environment variables
+- [x] **Add environment variable support** - Allow configuration via environment variables
 - [ ] **Add logging support** - Integrate with `log` crate for better debugging
 - [ ] **Add metrics collection** - Add optional metrics collection for monitoring
 
 ### 📱 API Improvements
 
+- [x] **Add order submission endpoint** - Implement `submit_order` function for placing new orders
+- [x] **Add REST ticker endpoint** - Implement `get_ticker` function for fetching ticker data via REST
 - [ ] **Add subscription management** - Allow subscribing/unsubscribing from multiple channels
 - [ ] **Add message filtering** - Filter messages by pair, event type, or custom criteria
 - [ ] **Add callback error handling** - Allow handlers to return errors and handle them gracefully

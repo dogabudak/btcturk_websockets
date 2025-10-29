@@ -1,7 +1,17 @@
 pub mod client;
 pub mod types;
 pub use client::Client;
-pub use types::*;
+pub use types::{
+    Event,
+    TickerEvent,
+    OrderBookEvent,
+    SubmitOrderRequest,
+    SubmitOrderResponse,
+    OrderMethod,
+    OrderType,
+    TickerRestResponse,
+    TickerRestData,
+};
 pub mod channel;
 pub use channel::Channel;
 pub mod api_keys;

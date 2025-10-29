@@ -1,7 +1,7 @@
 use crate::{
     ApiKeys,
     Channel,
-    types::{Event, TickerEvent, OrderBookEvent},
+    types::{Event, TickerEvent, OrderBookEvent, SubmitOrderRequest, SubmitOrderResponse, TickerRestResponse},
 };
 use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
@@ -105,6 +105,82 @@ impl Client {
 
         let body: BalanceResponse = res.json().await?;
         Ok(body)
+    }
+
+    pub async fn submit_order(
+        &self,
+        request: SubmitOrderRequest,
+    ) -> Result<SubmitOrderResponse, Box<dyn std::error::Error>> {
+        let url = "https://api.btcturk.com/api/v1/order";
+        let headers = self.auth_headers()?;
+
+        let res = self
+            .http_client
+            .post(url)
+            .headers(headers)
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = res.status();
+        
+        if !status.is_success() {
+            let error_text = res.text().await.unwrap_or_else(|_| "Unable to read error response".to_string());
+            return Err(format!("API Error ({}): {}", status, error_text).into());
+        }
+
+        let response_text = res.text().await?;
+        
+        let json_value: serde_json::Value = serde_json::from_str(&response_text)?;
+        
+        let body = if json_value.get("data").is_some() {
+            serde_json::from_value::<SubmitOrderResponse>(json_value["data"].clone())
+                .map_err(|e| format!("Failed to deserialize order response from data field: {}. Raw response: {}", e, response_text))?
+        } else {
+            serde_json::from_str::<SubmitOrderResponse>(&response_text)
+                .map_err(|e| format!("Failed to deserialize order response: {}. Raw response: {}", e, response_text))?
+        };
+        
+        Ok(body)
+    }
+
+    pub async fn get_ticker(
+        &self,
+        pair_symbol: Option<&str>,
+    ) -> Result<TickerRestResponse, Box<dyn std::error::Error>> {
+        let mut url = reqwest::Url::parse("https://api.btcturk.com/api/v2/ticker")?;
+
+        if let Some(pair) = pair_symbol {
+            url.query_pairs_mut().append_pair("pairSymbol", pair);
+        }
+
+        let res = self
+            .http_client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let body: TickerRestResponse = res.json().await?;
+        Ok(body)
+    }
+
+    pub async fn get_exchange_info(&self) -> Result<crate::types::ExchangeInfoResponse, Box<dyn std::error::Error>> {
+        let url = "https://api.btcturk.com/api/v2/server/exchangeinfo";
+        
+        let res = self
+            .http_client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let body: crate::types::ExchangeInfoResponse = res.json().await?;
+        Ok(body)
+    }
+
+    pub fn get_symbol_info<'a>(&self, exchange_info: &'a crate::types::ExchangeInfoResponse, pair_symbol: &str) -> Option<&'a crate::types::SymbolInfo> {
+        exchange_info.data.symbols.iter().find(|s| s.name == pair_symbol)
     }
 
     /// Generates WebSocket authentication token message

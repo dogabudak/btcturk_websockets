@@ -1,6 +1,6 @@
 [package]
 name = "btcturk_websockets"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 authors = ["Doğa Budak <dogabudak@gmail.com>"]
 license = "MIT"
@@ -23,3 +23,4 @@ serde_json = "1"
 chrono = "0.4"
 url = "2"
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+dotenvy = "0.15.7"
