@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-btcturk_websockets = "1.0.0"
+btcturk_websockets = "2.0.0"
 dotenvy = "0.15" # For loading .env files in examples
 ```
 
