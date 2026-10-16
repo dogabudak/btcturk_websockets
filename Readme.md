@@ -28,6 +28,7 @@ dotenvy = "0.15" # For loading .env files in examples
 
 ```rust
 use btcturk_websockets::{ApiKeys, Client};
+use std::env;
 use dotenvy::dotenv;
 
 #[tokio::main]
@@ -61,6 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust
 use btcturk_websockets::{ApiKeys, Client};
+use std::env;
 use dotenvy::dotenv;
 
 #[tokio::main]
@@ -212,6 +214,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
+### 🔢 Decimal Amounts
+
+All prices, amounts, and balances are [`Decimal`](https://docs.rs/rust_decimal) values, so they can be compared and calculated exactly with no floating-point rounding. `Decimal` is re-exported, so you don't need to add `rust_decimal` yourself:
+
+```rust
+use btcturk_websockets::Decimal;
+
+client
+    .subscribe_orderbook("BTCTRY", |ob| {
+        if let (Some(bid), Some(ask)) = (ob.bids.first(), ob.asks.first()) {
+            let spread: Decimal = ask.price - bid.price;
+            println!("Spread: {spread} TRY");
+        }
+    })
+    .await?;
+```
+
+Create values with `Decimal::from(10)` or `"0.001".parse::<Decimal>()?`. For rounding helpers, use the re-exported crate: `btcturk_websockets::rust_decimal::RoundingStrategy`.
+
+---
+
 ### 🚨 Error Handling
 
 Every fallible method returns `btcturk_websockets::Result<T>`, using the crate's `Error` enum. Match on it to handle specific failures:
@@ -253,6 +276,10 @@ match client.submit_order(order_request).await {
 | Submit Order | Place a new buy or sell order | `submit_order()` |
 | **Public REST API** | | |
 | Get Ticker | Fetch current ticker data | `get_ticker()` |
+| Exchange Info | Fetch trading pairs, scales, and price limits | `get_exchange_info()` |
+| **Utilities** | | |
+| Frame Parsing | Parse a raw BtcTurk WebSocket frame into an `Event` | `Event::parse()` |
+
 ---
 
 ## 🧱 Architecture
@@ -260,15 +287,26 @@ match client.submit_order(order_request).await {
 - **WebSocket backend:** [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite)
 - **HTTP client:** [`reqwest`](https://crates.io/crates/reqwest) for REST API trading calls
 - **Async runtime:** [`tokio`](https://crates.io/crates/tokio)
-- **Serialization:** [`serde` / `serde_json`](https://serde.rs/)
+- **Serialization:** [`serde` / `serde_json`](https://serde.rs/), with WebSocket frames deserialized straight from the frame text
+- **Numbers:** [`rust_decimal`](https://crates.io/crates/rust_decimal) for exact prices and amounts
+- **Errors:** [`thiserror`](https://crates.io/crates/thiserror)-based `Error` enum
 - **Auth signing:** [`hmac` + `sha2` + `base64`]
 
 All messages are deserialized into typed Rust structs:
 ```rust
-TickerEvent { pair_symbol, bid, ask, last, volume, ... }
-OrderBookEvent { bids, asks, pair_symbol, ... }
-TickerRestData { pair_symbol, bid, ask, last, high, low, volume }
+TickerEvent { pair_symbol: String, bid: Decimal, ask: Decimal, last: Decimal, volume: Decimal, ... }
+OrderBookEvent { pair_symbol: String, bids: Vec<OrderBookOrder>, asks: Vec<OrderBookOrder>, ... }
+OrderBookOrder { price: Decimal, amount: Decimal }
+TickerRestData { pair_symbol: String, bid: Decimal, ask: Decimal, last: Decimal, high: Decimal, low: Decimal, volume: Decimal }
 ```
+
+---
+
+## ⬆️ Upgrading from 1.x
+
+- **Numeric fields are `Decimal`, not `String`.** Build orders with `quantity: Decimal::from(10)` instead of `"10".to_string()`. Compare against `Decimal` values (for example `"0.5".parse::<Decimal>()?`) instead of string literals, and drop any `.parse::<f64>()` calls.
+- **Methods return `btcturk_websockets::Result<T>`.** Code that uses `?` inside `Box<dyn Error>` functions keeps working. Matching on error strings should switch to matching `Error` variants.
+- **`create_connection()` and `generate_token_message()` return `Result`.** Add a `?` where you call them; they no longer panic.
 
 
 **Made with 🦀 in Rust** – All contributions welcome!
