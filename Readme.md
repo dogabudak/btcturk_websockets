@@ -122,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Place new orders using the `submit_order` method. You'll need to provide your API keys via environment variables.
 
 ```rust
-use btcturk_websockets::{ApiKeys, Client, SubmitOrderRequest, OrderMethod, OrderType};
+use btcturk_websockets::{ApiKeys, Client, Decimal, SubmitOrderRequest, OrderMethod, OrderType};
 use std::env;
 use dotenvy::dotenv;
 
@@ -138,8 +138,8 @@ async fn main() {
     let client = Client::new("wss://ws-feed-sandbox.btcturk.com/", keys);
 
     let order_request = SubmitOrderRequest {
-        quantity: "10".to_string(),
-        price: Some("50000".to_string()),
+        quantity: Decimal::from(10),
+        price: Some(Decimal::from(50000)),
         stop_price: None,
         order_method: OrderMethod::Limit,
         order_type: OrderType::Buy,
@@ -209,6 +209,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+---
+
+### 🚨 Error Handling
+
+Every fallible method returns `btcturk_websockets::Result<T>`, using the crate's `Error` enum. Match on it to handle specific failures:
+
+```rust
+use btcturk_websockets::Error;
+
+match client.submit_order(order_request).await {
+    Ok(order) => println!("✅ Order {} placed", order.id),
+    Err(Error::Api { status, body }) => eprintln!("BtcTurk rejected the order ({status}): {body}"),
+    Err(Error::InvalidSecret(_)) => eprintln!("BTCTURK_PRIVATE_KEY is not valid Base64"),
+    Err(e) => eprintln!("Request failed: {e}"),
+}
+```
+
+| Variant | When |
+|---|---|
+| `InvalidSecret` | The private key is not valid Base64 |
+| `InvalidHeader` | An API key contains characters not allowed in HTTP headers |
+| `InvalidUrl` | The address passed to `Client::new` can't be parsed |
+| `Http` | The HTTP request failed or the body couldn't be read |
+| `Api { status, body }` | BtcTurk answered with a non-success status |
+| `Decode { source, body }` | The response JSON didn't match the expected shape |
+| `WebSocket` | Connecting, sending, or reading on the WebSocket failed |
+
+`Error` is `Send + Sync`, so `?` also works in functions returning `Box<dyn std::error::Error>` or `anyhow::Result`.
 
 ---
 

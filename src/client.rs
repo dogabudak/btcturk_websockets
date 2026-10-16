@@ -1,6 +1,7 @@
 use crate::{
     ApiKeys,
     Channel,
+    error::{Error, Result},
     types::{Event, TickerEvent, OrderBookEvent, SubmitOrderRequest, SubmitOrderResponse, TickerRestResponse},
 };
 use chrono::Utc;
@@ -15,10 +16,11 @@ use tokio_tungstenite::{
     WebSocketStream,
 };
 use base64::{engine::general_purpose, Engine as _};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json;
 use std::sync::{Arc, Mutex};
 use reqwest;
+use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -31,13 +33,13 @@ pub struct Client {
 pub struct Balance {
     pub asset: String,
     pub assetname: String,
-    pub balance: String,
-    pub locked: String,
-    pub free: String,
+    pub balance: Decimal,
+    pub locked: Decimal,
+    pub free: Decimal,
     #[serde(rename = "orderFund")]
-    pub order_fund: String,
+    pub order_fund: Decimal,
     #[serde(rename = "requestFund")]
-    pub request_fund: String,
+    pub request_fund: Decimal,
     pub precision: i32,
     pub timestamp: i64,
 }
@@ -63,35 +65,39 @@ impl Client {
         self.keys = keys;
     }
 
-    fn auth_headers(&self) -> Result<reqwest::header::HeaderMap, Box<dyn std::error::Error>> {
+    /// Signs `public_key + timestamp` with the Base64-decoded private key.
+    fn sign(&self, timestamp: &str) -> Result<String> {
+        let secret = general_purpose::STANDARD
+            .decode(&self.keys.private_key)
+            .or_else(|err| {
+                general_purpose::URL_SAFE_NO_PAD
+                    .decode(&self.keys.private_key)
+                    .map_err(|_| Error::InvalidSecret(err))
+            })?;
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(&secret)
+            .expect("HMAC accepts keys of any length");
+        mac.update(self.keys.public_key.as_bytes());
+        mac.update(timestamp.as_bytes());
+        Ok(general_purpose::STANDARD.encode(mac.finalize().into_bytes()))
+    }
+
+    fn auth_headers(&self) -> Result<reqwest::header::HeaderMap> {
         use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
-    
-        let timestamp = Utc::now().timestamp_millis();
-        let data = format!("{}{}", self.keys.public_key, timestamp);
-    
-        let decoded_secret = match general_purpose::STANDARD.decode(&self.keys.private_key) {
-            Ok(bytes) => bytes,
-            Err(_) => general_purpose::URL_SAFE_NO_PAD
-                .decode(&self.keys.private_key)
-                .map_err(|_| "Failed to decode API secret as Base64")?,
-        };
-    
-        let mut mac = Hmac::<Sha256>::new_from_slice(&decoded_secret)?;
-        mac.update(data.as_bytes());
-        let signature = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
+
+        let timestamp = Utc::now().timestamp_millis().to_string();
+        let signature = self.sign(&timestamp)?;
     
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert("X-PCK", HeaderValue::from_str(&self.keys.public_key)?);
-        headers.insert("X-Stamp", HeaderValue::from_str(&timestamp.to_string())?);
+        headers.insert("X-Stamp", HeaderValue::from_str(&timestamp)?);
         headers.insert("X-Signature", HeaderValue::from_str(&signature)?);
     
         Ok(headers)
     }
 
-    pub async fn get_account_balance(
-        &self,
-    ) -> Result<BalanceResponse, Box<dyn std::error::Error>> {
+    pub async fn get_account_balance(&self) -> Result<BalanceResponse> {
         let url = "https://api.btcturk.com/api/v1/users/balances";
         let headers = self.auth_headers()?;
 
@@ -100,17 +106,15 @@ impl Client {
             .get(url)
             .headers(headers)
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
 
-        let body: BalanceResponse = res.json().await?;
-        Ok(body)
+        decode(success_body(res).await?)
     }
 
     pub async fn submit_order(
         &self,
         request: SubmitOrderRequest,
-    ) -> Result<SubmitOrderResponse, Box<dyn std::error::Error>> {
+    ) -> Result<SubmitOrderResponse> {
         let url = "https://api.btcturk.com/api/v1/order";
         let headers = self.auth_headers()?;
 
@@ -122,32 +126,14 @@ impl Client {
             .send()
             .await?;
 
-        let status = res.status();
-        
-        if !status.is_success() {
-            let error_text = res.text().await.unwrap_or_else(|_| "Unable to read error response".to_string());
-            return Err(format!("API Error ({}): {}", status, error_text).into());
-        }
-
-        let response_text = res.text().await?;
-        
-        let json_value: serde_json::Value = serde_json::from_str(&response_text)?;
-        
-        let body = if json_value.get("data").is_some() {
-            serde_json::from_value::<SubmitOrderResponse>(json_value["data"].clone())
-                .map_err(|e| format!("Failed to deserialize order response from data field: {}. Raw response: {}", e, response_text))?
-        } else {
-            serde_json::from_str::<SubmitOrderResponse>(&response_text)
-                .map_err(|e| format!("Failed to deserialize order response: {}. Raw response: {}", e, response_text))?
-        };
-        
-        Ok(body)
+        let body = success_body(res).await?;
+        parse_order_response(&body).map_err(|source| Error::Decode { source, body })
     }
 
     pub async fn get_ticker(
         &self,
         pair_symbol: Option<&str>,
-    ) -> Result<TickerRestResponse, Box<dyn std::error::Error>> {
+    ) -> Result<TickerRestResponse> {
         let mut url = reqwest::Url::parse("https://api.btcturk.com/api/v2/ticker")?;
 
         if let Some(pair) = pair_symbol {
@@ -158,25 +144,21 @@ impl Client {
             .http_client
             .get(url)
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
 
-        let body: TickerRestResponse = res.json().await?;
-        Ok(body)
+        decode(success_body(res).await?)
     }
 
-    pub async fn get_exchange_info(&self) -> Result<crate::types::ExchangeInfoResponse, Box<dyn std::error::Error>> {
+    pub async fn get_exchange_info(&self) -> Result<crate::types::ExchangeInfoResponse> {
         let url = "https://api.btcturk.com/api/v2/server/exchangeinfo";
         
         let res = self
             .http_client
             .get(url)
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
 
-        let body: crate::types::ExchangeInfoResponse = res.json().await?;
-        Ok(body)
+        decode(success_body(res).await?)
     }
 
     pub fn get_symbol_info<'a>(&self, exchange_info: &'a crate::types::ExchangeInfoResponse, pair_symbol: &str) -> Option<&'a crate::types::SymbolInfo> {
@@ -184,29 +166,21 @@ impl Client {
     }
 
     /// Generates WebSocket authentication token message
-    pub fn generate_token_message(&mut self) -> Message {
+    pub fn generate_token_message(&mut self) -> Result<Message> {
         let nonce = 3000;
         let timestamp = Utc::now().timestamp_millis().to_string();
-        let mut mac = Hmac::<Sha256>::new_from_slice(
-            &general_purpose::STANDARD.decode(&self.keys.private_key).unwrap(),
-        )
-        .unwrap();
+        let signature = self.sign(&timestamp)?;
 
-        mac.update((self.keys.public_key.clone() + &timestamp).as_bytes());
-        let signature = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
-
-        Message::from(format!(
+        Ok(Message::from(format!(
             "[114,{{\"type\":114,\"publicKey\":\"{}\",\"timestamp\":{},\"nonce\":{},\"signature\":\"{}\"}}]",
             self.keys.public_key, timestamp, nonce, signature
-        ))
+        )))
     }
 
-    pub async fn create_connection(&self) -> WebSocketStream<MaybeTlsStream<TcpStream>> {
-        let url = url::Url::parse(&self.address).unwrap();
-        let (ws_stream, _response) = connect_async(url)
-            .await
-            .expect("❌ Failed to connect to BtcTurk WebSocket");
-        ws_stream
+    pub async fn create_connection(&self) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>> {
+        let url = url::Url::parse(&self.address)?;
+        let (ws_stream, _response) = connect_async(url).await?;
+        Ok(ws_stream)
     }
 
     pub async fn subscribe_with_handler<F>(
@@ -214,11 +188,11 @@ impl Client {
         pair: &str,
         channel: Option<Channel>,
         mut handler: F,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    ) -> Result<()>
     where
         F: FnMut(Event) + Send + 'static,
     {
-        let ws_stream = self.create_connection().await;
+        let ws_stream = self.create_connection().await?;
         let (mut write, mut read) = ws_stream.split();
 
         let channel = channel.unwrap_or(Channel::Ticker);
@@ -234,30 +208,9 @@ impl Client {
         while let Some(msg) = read.next().await {
             match msg? {
                 Message::Text(text) => {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(data) = json.get(1) {
-                            if let Some(chan) = data.get("channel").and_then(|v| v.as_str()) {
-                                match chan {
-                                    "ticker" => {
-                                        if let Ok(ev) =
-                                            serde_json::from_value::<TickerEvent>(data.clone())
-                                        {
-                                            handler(Event::Ticker(ev));
-                                            continue;
-                                        }
-                                    }
-                                    "orderbook" => {
-                                        if let Ok(ev) =
-                                            serde_json::from_value::<OrderBookEvent>(data.clone())
-                                        {
-                                            handler(Event::OrderBook(ev));
-                                            continue;
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
+                    if let Some(event) = Event::parse(&text) {
+                        handler(event);
+                        continue;
                     }
 
                     if !text.starts_with("[991")
@@ -283,7 +236,7 @@ impl Client {
         &mut self,
         pair: &str,
         handler: F,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    ) -> Result<()>
     where
         F: FnMut(TickerEvent) + Send + 'static,
     {
@@ -307,7 +260,7 @@ impl Client {
         &mut self,
         pair: &str,
         handler: F,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    ) -> Result<()>
     where
         F: FnMut(OrderBookEvent) + Send + 'static,
     {
@@ -324,5 +277,33 @@ impl Client {
             }
         })
         .await
+    }
+}
+
+/// Returns the response body, or [`Error::Api`] if the status is not a success.
+async fn success_body(res: reqwest::Response) -> Result<String> {
+    let status = res.status();
+    let body = res.text().await?;
+    if !status.is_success() {
+        return Err(Error::Api { status, body });
+    }
+    Ok(body)
+}
+
+fn decode<T: DeserializeOwned>(body: String) -> Result<T> {
+    serde_json::from_str(&body).map_err(|source| Error::Decode { source, body })
+}
+
+/// Order responses may arrive wrapped in a `data` field or bare.
+fn parse_order_response(body: &str) -> serde_json::Result<SubmitOrderResponse> {
+    #[derive(Deserialize)]
+    struct Envelope<'a> {
+        #[serde(borrow)]
+        data: Option<&'a serde_json::value::RawValue>,
+    }
+
+    match serde_json::from_str::<Envelope>(body)?.data {
+        Some(data) => serde_json::from_str(data.get()),
+        None => serde_json::from_str(body),
     }
 }

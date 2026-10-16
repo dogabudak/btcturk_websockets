@@ -1,4 +1,8 @@
+use rust_decimal::Decimal;
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
+use std::borrow::Cow;
 
 #[derive(Debug, Serialize)]
 pub enum OrderMethod {
@@ -23,11 +27,11 @@ pub enum OrderType {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitOrderRequest {
-    pub quantity: String,
+    pub quantity: Decimal,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub price: Option<String>,
+    pub price: Option<Decimal>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub stop_price: Option<String>,
+    pub stop_price: Option<Decimal>,
     pub order_method: OrderMethod,
     pub order_type: OrderType,
     pub pair_symbol: String,
@@ -43,9 +47,9 @@ pub struct SubmitOrderResponse {
     pub datetime: u64,
     pub r#type: String,
     pub method: String,
-    pub price: String,
+    pub price: Decimal,
     #[serde(alias = "amount")]
-    pub quantity: String,
+    pub quantity: Decimal,
     pub pair_symbol: String,
     #[serde(rename = "newOrderClientId")]
     pub new_order_client_id: String,
@@ -59,31 +63,31 @@ pub struct TickerEvent {
     pub event: String,
 
     #[serde(rename = "B")]
-    pub bid: String,
+    pub bid: Decimal,
     #[serde(rename = "A")]
-    pub ask: String,
+    pub ask: Decimal,
     #[serde(rename = "BA")]
-    pub bid_amount: String,
+    pub bid_amount: Decimal,
     #[serde(rename = "AA")]
-    pub ask_amount: String,
+    pub ask_amount: Decimal,
     #[serde(rename = "PS")]
     pub pair_symbol: String,
     #[serde(rename = "H")]
-    pub high: String,
+    pub high: Decimal,
     #[serde(rename = "L")]
-    pub low: String,
+    pub low: Decimal,
     #[serde(rename = "LA")]
-    pub last: String,
+    pub last: Decimal,
     #[serde(rename = "O")]
-    pub open: String,
+    pub open: Decimal,
     #[serde(rename = "V")]
-    pub volume: String,
+    pub volume: Decimal,
     #[serde(rename = "AV")]
-    pub average: String,
+    pub average: Decimal,
     #[serde(rename = "D")]
-    pub change_amount: String,
+    pub change_amount: Decimal,
     #[serde(rename = "DP")]
-    pub change_percent: String,
+    pub change_percent: Decimal,
     #[serde(rename = "DS")]
     pub denominator_symbol: String,
     #[serde(rename = "NS")]
@@ -95,9 +99,9 @@ pub struct TickerEvent {
 #[derive(Debug, Clone, Deserialize)]
 pub struct OrderBookOrder {
     #[serde(rename = "A")]
-    pub amount: String,
+    pub amount: Decimal,
     #[serde(rename = "P")]
-    pub price: String,
+    pub price: Decimal,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -127,76 +131,51 @@ pub enum Event {
     Unknown(serde_json::Value),
 }
 
+impl Event {
+    /// Parses a raw BtcTurk WebSocket frame (`[<type>, {...}]`) into an `Event`.
+    ///
+    /// Returns `None` for frames that aren't ticker or orderbook payloads, or that fail
+    /// to deserialize. The payload is deserialized straight from the frame text, without
+    /// building or cloning an intermediate `serde_json::Value` tree.
+    pub fn parse(text: &str) -> Option<Event> {
+        #[derive(Deserialize)]
+        struct ChannelPeek<'a> {
+            #[serde(borrow)]
+            channel: Option<Cow<'a, str>>,
+        }
+
+        let (_, payload): (IgnoredAny, &RawValue) = serde_json::from_str(text).ok()?;
+        let peek: ChannelPeek = serde_json::from_str(payload.get()).ok()?;
+
+        match peek.channel.as_deref()? {
+            "ticker" => serde_json::from_str(payload.get()).ok().map(Event::Ticker),
+            "orderbook" => serde_json::from_str(payload.get()).ok().map(Event::OrderBook),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TickerRestResponse {
     pub data: Vec<TickerRestData>,
-}
-
-// Helper function to deserialize numbers or strings as strings
-fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::{self, Visitor};
-    use std::fmt;
-
-    struct NumberOrStringVisitor;
-
-    impl<'de> Visitor<'de> for NumberOrStringVisitor {
-        type Value = String;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a number or a string")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-    }
-
-    deserializer.deserialize_any(NumberOrStringVisitor)
 }
 
 #[derive(Debug, Deserialize)]
 pub struct TickerRestData {
     #[serde(rename = "pair")]
     pub pair_symbol: String,
-    #[serde(rename = "bid", deserialize_with = "deserialize_number_or_string")]
-    pub bid: String,
-    #[serde(rename = "ask", deserialize_with = "deserialize_number_or_string")]
-    pub ask: String,
-    #[serde(rename = "last", deserialize_with = "deserialize_number_or_string")]
-    pub last: String,
-    #[serde(rename = "high", deserialize_with = "deserialize_number_or_string")]
-    pub high: String,
-    #[serde(rename = "low", deserialize_with = "deserialize_number_or_string")]
-    pub low: String,
-    #[serde(rename = "volume", deserialize_with = "deserialize_number_or_string")]
-    pub volume: String,
+    #[serde(rename = "bid")]
+    pub bid: Decimal,
+    #[serde(rename = "ask")]
+    pub ask: Decimal,
+    #[serde(rename = "last")]
+    pub last: Decimal,
+    #[serde(rename = "high")]
+    pub high: Decimal,
+    #[serde(rename = "low")]
+    pub low: Decimal,
+    #[serde(rename = "volume")]
+    pub volume: Decimal,
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,71 +198,8 @@ pub struct SymbolInfo {
     pub numerator_scale: i32,
     #[serde(rename = "denominatorScale")]
     pub denominator_scale: i32,
-    #[serde(rename = "maximumLimitOrderPrice", deserialize_with = "deserialize_option_number_or_string")]
-    pub maximum_limit_order_price: Option<String>,
-    #[serde(rename = "minimumLimitOrderPrice", deserialize_with = "deserialize_option_number_or_string")]
-    pub minimum_limit_order_price: Option<String>,
-}
-
-// Helper function to deserialize optional numbers or strings as strings
-fn deserialize_option_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::{self, Visitor};
-    use std::fmt;
-
-    struct OptionNumberOrStringVisitor;
-
-    impl<'de> Visitor<'de> for OptionNumberOrStringVisitor {
-        type Value = Option<String>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("an optional number or a string")
-        }
-
-        fn visit_none<E>(self) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(None)
-        }
-
-        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            deserialize_number_or_string(deserializer).map(Some)
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(Some(value.to_string()))
-        }
-
-        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(Some(value.to_string()))
-        }
-
-        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(Some(value.to_string()))
-        }
-
-        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(Some(value.to_string()))
-        }
-    }
-
-    deserializer.deserialize_option(OptionNumberOrStringVisitor)
+    #[serde(rename = "maximumLimitOrderPrice")]
+    pub maximum_limit_order_price: Option<Decimal>,
+    #[serde(rename = "minimumLimitOrderPrice")]
+    pub minimum_limit_order_price: Option<Decimal>,
 }

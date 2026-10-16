@@ -1,3 +1,4 @@
+use rust_decimal_macros::dec;
 use btcturk_websockets::types::TickerEvent;
 
 #[test]
@@ -18,7 +19,7 @@ fn parses_btcturk_ticker_payload() {
     assert_eq!(t.channel, "ticker");
     assert_eq!(t.event, "ADATRY");
     assert_eq!(t.type_field, 402);
-    assert_eq!(t.bid, "34.706");
-    assert_eq!(t.ask, "34.738");
+    assert_eq!(t.bid, dec!(34.706));
+    assert_eq!(t.ask, dec!(34.738));
     assert_eq!(t.pair_symbol, "ADATRY");
 }

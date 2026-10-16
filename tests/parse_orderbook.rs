@@ -1,3 +1,4 @@
+use rust_decimal_macros::dec;
 use btcturk_websockets::types::{OrderBookEvent};
 
 #[test]
@@ -19,6 +20,6 @@ fn parses_btcturk_orderbook_payload() {
     assert_eq!(ob.type_field, 431);
     assert!(ob.asks.len() >= 2);
     assert!(ob.bids.len() >= 2);
-    assert_eq!(ob.asks[0].price, "5171945");
-    assert_eq!(ob.bids[0].price, "5168031");
+    assert_eq!(ob.asks[0].price, dec!(5171945));
+    assert_eq!(ob.bids[0].price, dec!(5168031));
 }

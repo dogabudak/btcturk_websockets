@@ -1,3 +1,4 @@
+use rust_decimal_macros::dec;
 use btcturk_websockets::client::{Balance, BalanceResponse};
 use serde_json;
 
@@ -19,11 +20,11 @@ fn test_balance_deserialization() {
     
     assert_eq!(balance.asset, "BTC");
     assert_eq!(balance.assetname, "Bitcoin");
-    assert_eq!(balance.balance, "1.5");
-    assert_eq!(balance.locked, "0.2");
-    assert_eq!(balance.free, "1.3");
-    assert_eq!(balance.order_fund, "0.1");
-    assert_eq!(balance.request_fund, "0.1");
+    assert_eq!(balance.balance, dec!(1.5));
+    assert_eq!(balance.locked, dec!(0.2));
+    assert_eq!(balance.free, dec!(1.3));
+    assert_eq!(balance.order_fund, dec!(0.1));
+    assert_eq!(balance.request_fund, dec!(0.1));
     assert_eq!(balance.precision, 8);
     assert_eq!(balance.timestamp, 1634567890);
 }
@@ -33,11 +34,11 @@ fn test_balance_serialization() {
     let balance = Balance {
         asset: "ETH".to_string(),
         assetname: "Ethereum".to_string(),
-        balance: "10.0".to_string(),
-        locked: "1.0".to_string(),
-        free: "9.0".to_string(),
-        order_fund: "0.5".to_string(),
-        request_fund: "0.5".to_string(),
+        balance: dec!(10.0),
+        locked: dec!(1.0),
+        free: dec!(9.0),
+        order_fund: dec!(0.5),
+        request_fund: dec!(0.5),
         precision: 18,
         timestamp: 1634567890,
     };
@@ -97,11 +98,11 @@ fn test_balance_response_deserialization_success() {
     
     let btc_balance = &response.data[0];
     assert_eq!(btc_balance.asset, "BTC");
-    assert_eq!(btc_balance.balance, "1.5");
+    assert_eq!(btc_balance.balance, dec!(1.5));
     
     let try_balance = &response.data[1];
     assert_eq!(try_balance.asset, "TRY");
-    assert_eq!(try_balance.balance, "50000.0");
+    assert_eq!(try_balance.balance, dec!(50000.0));
 }
 
 #[test]
@@ -126,11 +127,11 @@ fn test_balance_clone() {
     let balance = Balance {
         asset: "BTC".to_string(),
         assetname: "Bitcoin".to_string(),
-        balance: "1.0".to_string(),
-        locked: "0.1".to_string(),
-        free: "0.9".to_string(),
-        order_fund: "0.05".to_string(),
-        request_fund: "0.05".to_string(),
+        balance: dec!(1.0),
+        locked: dec!(0.1),
+        free: dec!(0.9),
+        order_fund: dec!(0.05),
+        request_fund: dec!(0.05),
         precision: 8,
         timestamp: 1634567890,
     };
@@ -163,11 +164,11 @@ fn test_balance_debug_format() {
     let balance = Balance {
         asset: "BTC".to_string(),
         assetname: "Bitcoin".to_string(),
-        balance: "1.0".to_string(),
-        locked: "0.1".to_string(),
-        free: "0.9".to_string(),
-        order_fund: "0.05".to_string(),
-        request_fund: "0.05".to_string(),
+        balance: dec!(1.0),
+        locked: dec!(0.1),
+        free: dec!(0.9),
+        order_fund: dec!(0.05),
+        request_fund: dec!(0.05),
         precision: 8,
         timestamp: 1634567890,
     };
